@@ -14,7 +14,7 @@ func init() {
 	}
 }
 func main() {
-	var leagues = []int{1, 2, 3, 4, 5, 9, 39, 140, 143, 556}
+	var leagues = []int{39,1, 2, 3, 4, 5, 9,  140, 143, 556}
 	res := utils.GetDailyFixtures(leagues)
 	fmt.Printf("%v", res)
 }

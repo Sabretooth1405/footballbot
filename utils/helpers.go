@@ -1,10 +1,15 @@
+/*
+Helper functions for the service.Functions ar
+*/
 package utils
 
 import (
 	"fmt"
 	"io"
 	"net/http"
-     "os"
+	"os"
+	"strconv"
+	"time"
 	"github.com/tidwall/gjson"
 )
 
@@ -13,7 +18,7 @@ type Result struct {
 	link  string
 }
 type Fixture struct {
-	leauge     string
+	league     string
 	homeTeam   string
 	awayTeam   string
 	startTime  string
@@ -35,11 +40,11 @@ func callApi(url string) (int, []byte) {
 
 		return -1, empty
 	}
-	rapidApiKey, exists := os.LookupEnv("RAPID_API_KEY")
-    if exists{
-		println(rapidApiKey)
-	}
-	req.Header.Add("x-rapidapi-key",rapidApiKey)
+	rapidApiKey, _ := os.LookupEnv("RAPID_API_KEY")
+	// if exists {
+	// 	println(rapidApiKey)
+	// }
+	req.Header.Add("x-rapidapi-key", rapidApiKey)
 	req.Header.Add("x-rapidapi-host", "api-football-v1.p.rapidapi.com")
 
 	res, err := client.Do(req)
@@ -58,30 +63,54 @@ func callApi(url string) (int, []byte) {
 	}
 	return res.StatusCode, body
 }
-
+func getDateTimeFromTimeStamp(timestamp string) string {
+	i, err := strconv.ParseInt(timestamp, 10, 64)
+	if err != nil {
+		panic(err)
+	}
+	datetime := time.Unix(i, 0)
+	startTime := fmt.Sprintf("%s %d %s", datetime.Month().String(), datetime.Day(), datetime.Format(time.Kitchen))
+	return startTime
+}
+const (
+	YYYYMMDD="2006-01-02"
+)
 func GetDailyFixtures(leagues []int) []Fixture {
-	date := "2023-05-07"
+	currentDate:=time.Now().Format(YYYYMMDD)
+	fmt.Println(currentDate)
+	date := currentDate
 	season := 2022
 	fixtureList := []Fixture{}
-	for i, league := range leagues {
-		if i==1{
-			break
-		}
-		league = 39
-		url := fmt.Sprintf("https://api-football-v1.p.rapidapi.com/v3/fixtures?date=%s&league=%d&season=%d", date, league, season)
+	for _, league := range leagues {
+		url := fmt.Sprintf("https://api-football-v1.p.rapidapi.com/v3/fixtures?date=%s&league=%d&season=%d&timezone=Asia/Calcutta", date, league, season)
 		// fmt.Println(url)
 		status, res := callApi(url)
 		if status == 200 {
 			result := gjson.GetBytes(res, "response")
-			for _, r := range result.Array() {
-				
-				println(r.Get("league.name").String())
-				println()
+			resultCount := gjson.GetBytes(res, "results").Int()
+			fmt.Println(resultCount)
+			if resultCount == 0 {
+				continue
 			}
-			
-			fmt.Println(status)
-		
+			for _, r := range result.Array() {
+				println(r.Get("fixture").String())
+				timestamp := r.Get("fixture.timestamp").String()
+				startTime := getDateTimeFromTimeStamp(timestamp)
+				var result = Result{score: "ns", link: "ns"}
+				var newFixture = Fixture{league: r.Get("league.name").String(),
+					homeTeam:   r.Get("teams.home.name").String(),
+					awayTeam:   r.Get("teams.away.name").String(),
+					startTime:  startTime,
+					result:     result,
+					streamLink: "ns"}
+				fixtureList = append(fixtureList, newFixture)
+			}
+		}else if status==-1{
+			fmt.Println("Invalid Response or Some madness in urls (latter is more likely)")
+		} else{
+			fmt.Println("Bad request or API is down")
 		}
+		
 	}
 	return fixtureList
 }
