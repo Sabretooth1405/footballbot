@@ -11,6 +11,7 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
 	"github.com/tidwall/gjson"
 )
 
@@ -80,6 +81,7 @@ const (
 //	}
 var wg sync.WaitGroup
 var mutex = sync.Mutex{}
+
 func GetDailyFixtures(leagues []int) []Fixture {
 	currentDate := time.Now().Format(YYYYMMDD)
 	fmt.Println(currentDate)
@@ -87,45 +89,56 @@ func GetDailyFixtures(leagues []int) []Fixture {
 	season := 2022
 	fixtureList := []Fixture{}
 	for _, league := range leagues {
-        leaugeCopy:=league
+		leaugeCopy := league
 		wg.Add(1)
-		go func(){
+		go func() {
 			defer wg.Done()
-		url := fmt.Sprintf("https://api-football-v1.p.rapidapi.com/v3/fixtures?date=%s&league=%d&season=%d&timezone=Asia/Calcutta", date, leaugeCopy, season)
-		// fmt.Println(url)
-		status, res := callApi(url)
-		if status == 200 {
-			result := gjson.GetBytes(res, "response")
-			resultCount := gjson.GetBytes(res, "results").Int()
-			fmt.Println(resultCount)
-			if resultCount == 0 {
+			url := fmt.Sprintf("https://api-football-v1.p.rapidapi.com/v3/fixtures?date=%s&league=%d&season=%d&timezone=Asia/Calcutta", date, leaugeCopy, season)
+			// fmt.Println(url)
+			status, res := callApi(url)
+			if status == 200 {
+				result := gjson.GetBytes(res, "response")
+				resultCount := gjson.GetBytes(res, "results").Int()
+				fmt.Println(resultCount)
+				if resultCount == 0 {
+					return
+				}
+				for _, r := range result.Array() {
+					println(r.Get("fixture").String())
+					timestamp := r.Get("fixture.timestamp").String()
+					startTime := getDateTimeFromTimeStamp(timestamp)
+					var result = Result{}
+					fmt.Println(r.Get("fixture.status.short").String())
+					if r.Get("fixture.status.short").String() == "FT" {
+						result.score = fmt.Sprintf("%s %s-%s %s", r.Get("teams.home.name").String(),
+							r.Get("score.fulltime.home").String(), r.Get("score.fulltime.away").String(),
+							r.Get("teams.away.name").String())
+						result.link = "NA"
+					} else {
+						result.score = "ns or pt"
+						result.link = "NA"
+					}
+					var newFixture = Fixture{league: r.Get("league.name").String(),
+						homeTeam:   r.Get("teams.home.name").String(),
+						awayTeam:   r.Get("teams.away.name").String(),
+						startTime:  startTime,
+						result:     result,
+						streamLink: "NA"}
+					mutex.Lock()
+					fixtureList = append(fixtureList, newFixture)
+					mutex.Unlock()
+				}
+			} else if status == -1 {
+				fmt.Println("Invalid Response or Some madness in urls (latter is more likely)")
+				return
+			} else {
+				fmt.Println("Bad request or API is down")
 				return
 			}
-			for _, r := range result.Array() {
-				println(r.Get("fixture").String())
-				timestamp := r.Get("fixture.timestamp").String()
-				startTime := getDateTimeFromTimeStamp(timestamp)
-				var result = Result{score: "ns", link: "ns"}
-				var newFixture = Fixture{league: r.Get("league.name").String(),
-					homeTeam:   r.Get("teams.home.name").String(),
-					awayTeam:   r.Get("teams.away.name").String(),
-					startTime:  startTime,
-					result:     result,
-					streamLink: "ns"}
-				mutex.Lock()
-				fixtureList = append(fixtureList, newFixture)
-				mutex.Unlock()
-			}
-		} else if status == -1 {
-			fmt.Println("Invalid Response or Some madness in urls (latter is more likely)")
-			return
-		} else {
-			fmt.Println("Bad request or API is down")
-			return
-		}
 
-	}() 
-	wg.Wait()
+		}()
+
 	}
+	wg.Wait()
 	return fixtureList
 }
